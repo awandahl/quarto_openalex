@@ -1,24 +1,21 @@
 ---
-title: "2. OpenAlex KTH Looking at 
----
-
-```{r}
-
-```
-
----
-publishers"
+title: "OpenAlex KTH: Looking at publishers"
 author: "Anders Wändahl"
-format: html
+format:
+  html:
+    embed-resources: true
+#  pdf:
+#    prefer-html: true
+#    output:
+#    format: pdf  
+editor: visual
 ---
 
-#### Looking at publishers DiVA OpenAlex 2020-2023
+Looking at publishers DiVA OpenAlex 2020-2023
 
 We will now look at the publishers for KTH publications in DiVA and OpenAlex. The metadadata field for publishers in DiVA, called "Publisher", is a free text field and as such not standardized. Hence we will find many varieties of the different publisher names in this metadata field.
 
-#### Load the libraries
-
-```{r}
+{r}
 #| warning: false
 #| echo: false
 suppressPackageStartupMessages({
@@ -35,13 +32,12 @@ suppressPackageStartupMessages({
   library(magrittr)
 })
 
-```
 
-#### Get and clean DOI prefixes from Crossref
+Get and clean DOI prefixes from Crossref
 
 The DOI prefix serves as a unique identifier for each publisher or publishing organization. For example, the DOI prefix "10.30746" is registered to "KTH Royal Institute of Technology," while "10.1093" is assigned to "Oxford University Press (OUP)." Many prominent publishing houses possess multiple DOI prefixes, resulting from their acquisition of other publishers over time. These DOI prefixes will be utilized later to identify specific publishers during our analysis.
 
-```{r}
+{r}
 #| echo: false
 html_unescape <- function(x) {
   html <- paste0("<x>", paste0(x, collapse = "#_|"), "</x>")
@@ -57,19 +53,13 @@ doi_prefixes <- GET("http://doi.crossref.org/getPrefixPublisher/?prefix=all") %>
   rename(doi_publisher = name, cr_id = memberId, doi_prefix = prefixes) %>%
   mutate(doi_publisher = html_unescape(doi_publisher))
 
-```
 
-#### Define the DiVA search
-
-This is where we specify which metadata we want to get from DiVA.
-
-```{r}
+{r}
 #| echo: false
-diva_url <- 'https://kth.diva-portal.org/smash/export.jsf?format=csvall&addFilename=true&aq=[[]]&aqe=[]&aq2=[[{"dateIssued":{"from":"2020","to":"2023"}},{"publicationTypeCode":["bookReview","review","article","book","chapter","manuscript","collection","other","conferencePaper","patent","conferenceProceedings","report","dataset"]}]]&onlyFullText=false&noOfRows=99999&sortOrder=title_sort_asc&sortOrder2=title_sort_asc'
+diva_url <- 'https://kth.diva-portal.org/smash/export.jsf?format=csvall&addFilename=true&aq=[[]]&aqe=[]&aq2=[[{"dateIssued":{"from":"2023","to":"2023"}},{"publicationTypeCode":["bookReview","review","article","book","chapter","manuscript","collection","other","conferencePaper","patent","conferenceProceedings","report","dataset"]}]]&onlyFullText=false&noOfRows=99999&sortOrder=title_sort_asc&sortOrder2=title_sort_asc'
 
-```
 
-```{r}
+{r}
 #| echo: false
 #| warning: false
 ## Fetch the records from DiVA
@@ -85,11 +75,10 @@ kth_diva_works <- kth_diva_works %>%
 
 kth_diva_works <- left_join(kth_diva_works, doi_prefixes, by = "doi_prefix")
 
-```
 
-#### These are the publishers we find in the "Publisher" field in DiVA
+These are the publishers we find in the "Publisher" field in DiVA
 
-```{r}
+{r}
 kth_diva_works %>%
   count(Publisher) %>%
   filter(!is.na(Publisher)) %>%
@@ -110,28 +99,43 @@ kth_diva_works %>%
   theme_minimal() +
   scale_x_discrete(breaks = "", labels = "")
 
-```
 
-#### As we can see the "Publisher" field in DiVA is not standarized
+As we can see the "Publisher" field in DiVA is not unified
 
 Let's have a look at the publisher Springer.
 
-```{r}
+{r}
 kth_diva_works %>%
   filter(grepl("^Springer", Publisher)) %>%
   count(Publisher) %>%
   arrange(desc(n)) %>%
   kable("html") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
-```
 
-```{r}
+Missing values (NA) in the "Publisher" field in DiVA
+
+In the presentation above we have excluded empty values (NA). How many are they in the "Publisher" field in DiVA?
+
+{r}
+## not having "Publisher" 
+sum(is.na(kth_diva_works$Publisher))
+## total number of publications
+nrow(kth_diva_works)
+
+## the percentage of NA:s in "Publisher"
+percent_na_diva <- (sum(is.na(kth_diva_works$Publisher)) / nrow(kth_diva_works)) * 100
+percent_na_diva <-  round(percent_na_diva, digits = 0)
+percent_na_diva
+
+It seems like r sum(is.na(kth_diva_works$Publisher)) out of r nrow(kth_diva_works) = r percent_na_diva% of the publications have NA or no value in the "Publisher" field.
+
+{r}
 #| echo: false
 ## Fetch the records from OpenAlex
 kth_oa_works <- oa_fetch(
   entity = "works",
   authorships.institutions.ror = "026vcq606",
-  from_publication_date = "2020-01-01",
+  from_publication_date = "2023-01-01",
   to_publication_date = "2023-12-31",
   verbose = TRUE
   )
@@ -147,13 +151,10 @@ kth_oa_works <- kth_oa_works %>%
 
 kth_oa_works <- left_join(kth_oa_works, doi_prefixes, by = "doi_prefix")
 
-```
 
-#### These are the publishers ("host_organization")  we find in OpenAlex
+These are the publishers we find in the "host_organization" field in OpenAlex
 
-It looks better but it's not perfect.
-
-```{r}
+{r}
 kth_oa_works %>%
   count(host_organization) %>%
   filter(!is.na(host_organization)) %>%
@@ -173,31 +174,47 @@ kth_oa_works %>%
   labs(x = "Publisher", y = "Frequency") +
   theme_minimal() +
   scale_x_discrete(breaks = "", labels = "")
-```
 
-Bra hos Elsevier
+Missing values (NA) in the "host_organization" field in OpenAlex
 
-In this case Elsevier is unified but Springer is not standardized
+In the presentation above we have excluded empty values (NA). How many are they in the "host_organization" field in OpenAlex?
 
-```{r}
+{r}
+## not having "host_organization" in the diff
+sum(is.na(kth_oa_works$"host_organization"))
+## total number of publications in the diff
+nrow(kth_oa_works)
+
+## the percentage of NA:s in "host_organization"
+percent_na_oa <- (sum(is.na(kth_oa_works$"host_organization")) / nrow(kth_oa_works)) * 100
+percent_na_oa <-  round(percent_na_oa, digits = 0)
+percent_na_oa
+
+It seems like r sum(is.na(kth_oa_works$"host_organization")) out of r nrow(kth_oa_works) = r percent_na_oa% of the publications have NA or no value in the "host_organization" field.
+
+As we can see the "Publisher" field in OpenAlex is not unified either
+
+It looks better but it's not perfect. Let's check Springer again.
+
+{r}
 kth_oa_works %>%
   filter(grepl("^Springer", host_organization)) %>%
   count(host_organization) %>%
   arrange(desc(n)) %>%
   kable("html") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
-```
 
-#### Get the diff between DiVA and OpenAlex, i.e. the publications found in OpenAlex that are not in DiVA. This diff is based on DOI:s only.
+Get the diff between DiVA and OpenAlex, i.e. the publications found in OpenAlex that are not in DiVA. This diff is based on DOI:s only.
 
-```{r}
+{r}
+#| echo: false
 diff_oa_diva <- anti_join(kth_oa_works, kth_diva_works, by = c("doi" = "DOI"))
 
-```
 
-#### These are the publication types we have in the diff between DiVA and OpenAlex
+These are the publication types we have in the diff between DiVA and OpenAlex
 
-```{r}
+{r}
+#| echo: false
 diff_oa_diva %>%
   count(type) %>%
   arrange(desc(n)) %>%
@@ -214,13 +231,12 @@ diff_oa_diva %>%
   theme_minimal() +
   scale_x_discrete(breaks = "", labels = "")
 
-```
 
-### OpenAlex field "host_organization"
+OpenAlex field "host_organization"
 
-Let's look at the "publishers" with \>=10 publications based on the "host_organization" field. This is the field that should represent what we normally call a publisher. But first we want to know how many of the publications that have no values (NA) in the "host_organization" field:
+Let's look at the "publishers" with >=10 publications based on the "host_organization" field. This is the field that should represent what we normally call a publisher. But first we want to know how many of the publications that have no values (NA) in the "host_organization" field:
 
-```{r}
+{r}
 ## not having "host_organization" in the diff
 sum(is.na(diff_oa_diva$host_organization))
 ## total number of publications in the diff
@@ -230,11 +246,10 @@ nrow(diff_oa_diva)
 percent_na <- (sum(is.na(diff_oa_diva$host_organization)) / nrow(diff_oa_diva)) * 100
 percent_na <-  round(percent_na, digits = 0)
 percent_na
-```
 
-The presence of missing values (NA:s) in the "host_organization" column amounts to `r percent_na`%, which certainly is disappointing. To gain a more comprehensive understanding of publishers in relation to the publications, an alternative approach using the DOI prefix method will be employed. At the time of import, we added "doi_prefix" and "doi_publisher" columns to both the DiVA and OpenAlex metadata dataframes. This enables us to explore and analyze the publishers more effectively.
+The presence of missing values (NA:s) in the "host_organization" column amounts to r percent_na%, which certainly is disappointing. To gain a more comprehensive understanding of publishers in relation to the publications, an alternative approach using the DOI prefix method will be employed. At the time of import, we added "doi_prefix" and "doi_publisher" columns to both the DiVA and OpenAlex metadata dataframes. This enables us to explore and analyze the publishers more effectively.
 
-```{r}
+{r}
 # diff_oa_diva %>%
 #   filter(!is.na(host_organization)) %>%
 #   count(host_organization) %>%
@@ -254,32 +269,29 @@ The presence of missing values (NA:s) in the "host_organization" column amounts 
 #   theme_minimal() +
 #   scale_x_discrete(breaks = "", labels = "")
 
-```
 
-#### The DOI prefix approach
+The DOI prefix approach
 
-```{r}
+{r}
 elsevier_doi <- length(which(diff_oa_diva$doi_publisher == "Elsevier BV"))
 elsevier_doi
 
 elsevier_host <- length(which(diff_oa_diva$host_organization == "Elsevier BV"))
 elsevier_host
 
-```
 
-When focusing on the publisher "Elsevier BV", the number of publications based on the "doi_publisher" column is `r elsevier_doi`, which is significantly higher compared to only `r elsevier_host` publications identified by examining the "host_organization" field in OpenAlex. This difference suggests that utilizing the "doi_publisher" column provides a more comprehensive representation of publications associated with "Elsevier BV" compared to relying solely on the "host_organization" field.
+When focusing on the publisher "Elsevier BV", the number of publications based on the "doi_publisher" column is r elsevier_doi, which is significantly higher compared to only r elsevier_host publications identified by examining the "host_organization" field in OpenAlex. This difference suggests that utilizing the "doi_publisher" column provides a more comprehensive representation of publications associated with "Elsevier BV" compared to relying solely on the "host_organization" field.
 
-```{r}
+{r}
 elsevier_na <- diff_oa_diva %>% 
   filter(diff_oa_diva$doi_publisher == "Elsevier BV" & is.na    (diff_oa_diva$host_organization)) %>%
   nrow()
 
 elsevier_na
-```
 
-Part of the reason for this, of course, is the significant number of missing values (NA) in the "host_organization" field. In this case, the count of missing values specific to "Elsevier BV" is `r elsevier_na`. But another reason is that the "RELX Group (Netherlands)", DOI prefix 10.2139, belongs to the "Elsevier BV" family according to Crossref. As being "RELX Group (Netherlands)" in the "host_organization" column, this organization is just one publisher among all the other. The RELX group represents in this case the e-print archive [SSRN](https://www.ssrn.com/index.cfm/en/) and should in fact be omitted from the statistics completely, as the publications found here can't be considered as formally published.
+Part of the reason for this, of course, is the significant number of missing values (NA) in the "host_organization" field. In this case, the count of missing values specific to "Elsevier BV" is r elsevier_na. But another reason is that the "RELX Group (Netherlands)", DOI prefix 10.2139, belongs to the "Elsevier BV" family according to Crossref. As being "RELX Group (Netherlands)" in the "host_organization" column, this organization is just one publisher among all the other. The RELX group represents in this case the e-print archive SSRN and should in fact be omitted from the statistics completely, as the publications found here can't be considered as formally published.
 
-```{r}
+{r}
 ## Number of publications attributed to the RELX Group by "host_organization"
 length(which(diff_oa_diva$host_organization == "RELX Group (Netherlands)"))
 
@@ -292,11 +304,10 @@ diff_oa_diva %>%
   filter(diff_oa_diva$doi_prefix == "10.2139" & is.na    (diff_oa_diva$host_organization)) %>%
   nrow()
 
-```
 
 So for the next table we remove the "RELX Group (Netherlands)", i.e. we filter out records with the DOI prefix "10.2139".
 
-```{r}
+{r}
 diff_oa_diva %>%
   filter(!doi_prefix == "10.2139") %>%
   count(doi_publisher) %>%
@@ -319,13 +330,12 @@ diff_oa_diva %>%
 ## length(which(diff_oa_diva$doi_publisher == "Elsevier BV"))
 ## length(which(diff_oa_diva$doi_prefix == "10.1016"))
 
-```
 
-#### e-print servers
+e-print servers
 
 We can see that not all publishers are "true publishers". Some of them are actually e-print/preprint/postprint servers. In plain language these services provide manuscripts in different versions, e.g. "submittedVersion" or "publishedVersion". We can search out the "host_organizations" that provide documents of the "type" that are called "posted-content" in OpenAlex.
 
-```{r}
+{r}
 diff_oa_diva %>%
   filter(!is.na(host_organization)) %>%
   filter(type == "posted-content") %>%
@@ -334,13 +344,12 @@ diff_oa_diva %>%
   kable("html") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
-```
 
-#### Cold Spring Harbor Laboratory
+Cold Spring Harbor Laboratory
 
-The "[Cold Spring Harbor Laboratory](https://www.cshl.edu/)", is a private and non-profit research institute hosting two major preprint servers in the fields of biology and the health sciences, [bioRxiv](https://www.biorxiv.org/) and [medRxiv](https://www.medrxiv.org/). As you can see in the below all of the publications are of the type "posted_content".
+The "Cold Spring Harbor Laboratory", is a private and non-profit research institute hosting two major preprint servers in the fields of biology and the health sciences, bioRxiv and medRxiv. As you can see in the below all of the publications are of the type "posted_content".
 
-```{r}
+{r}
 kth_oa_works %>%
   filter(host_organization=="Cold Spring Harbor Laboratory") %>%
   count(type) %>%
@@ -348,13 +357,12 @@ kth_oa_works %>%
   kable("html") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
-```
 
-#### Research Square
+Research Square
 
-The "[Research Square](https://www.researchsquare.com/)", is a multidisciplinary preprint and author services platform. As you can see in the below all of the publications are of the type "posted_content".
+The "Research Square", is a multidisciplinary preprint and author services platform. As you can see in the below all of the publications are of the type "posted_content".
 
-```{r}
+{r}
 kth_oa_works %>%
   filter(host_organization=="Research Square (United States)") %>%
   count(type) %>%
@@ -362,13 +370,12 @@ kth_oa_works %>%
   kable("html") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
-```
 
-#### Cornell University (arXiv)
+Cornell University (arXiv)
 
-[Cornell University](https://www.cornell.edu/) is a private university that hosts the old and famous e-print server [arXiv](https://arxiv.org/) in the fields of physics, mathematics, computer science, quantitative biology, quantitative finance, statistics, electrical engineering and systems science, and economics. As you can see below most of the publications are of the type "posted_content".
+Cornell University is a private university that hosts the old and famous e-print server arXiv in the fields of physics, mathematics, computer science, quantitative biology, quantitative finance, statistics, electrical engineering and systems science, and economics. As you can see below most of the publications are of the type "posted_content".
 
-```{r}
+{r}
 kth_oa_works %>%
   filter(host_organization=="Cornell University") %>%
   count(type) %>%
@@ -376,13 +383,12 @@ kth_oa_works %>%
   kable("html") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
-```
 
-#### European Organization for Nuclear Research = CERN
+European Organization for Nuclear Research = CERN
 
-The "European Organization for Nuclear Research", is better known as [CERN](https://en.wikipedia.org/wiki/CERN). In this case all publications registered under this "host_organization" are documents found at [Zenodo](https://en.wikipedia.org/wiki/Zenodo), and the publications are of different types. As you can see in the table below not all of the publications are of the type "posted_content".
+The "European Organization for Nuclear Research", is better known as CERN. In this case all publications registered under this "host_organization" are documents found at Zenodo, and the publications are of different types. As you can see in the table below not all of the publications are of the type "posted_content".
 
-```{r}
+{r}
 kth_oa_works %>%
   filter(host_organization=="European Organization for Nuclear Research") %>%
   count(type) %>%
@@ -390,13 +396,12 @@ kth_oa_works %>%
   kable("html") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
-```
 
-#### SSRN RELX Group
+SSRN RELX Group
 
 SSRN stands for the Social Sciences Research Network and started 1994 https://en.wikipedia.org/wiki/Social_Science_Research_Network
 
-```{r}
+{r}
 kth_oa_works[,c("doi","type","host_organization")] %>%
   filter(kth_oa_works$host_organization == "RELX Group (Netherlands)")
 
@@ -407,11 +412,10 @@ kth_oa_works %>%
   kable("html") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
-```
 
-#### So we omit e-print servers from the previous table of publishers with \>=10 publications.
+So we omit e-print servers from the previous table of publishers with >=10 publications.
 
-```{r}
+{r}
 diff_oa_diva %>%
   filter(!is.na(host_organization)) %>%
   filter(type != "posted-content") %>%
@@ -433,11 +437,10 @@ diff_oa_diva %>%
   theme_minimal() +
   scale_x_discrete(breaks = "", labels = "")
 
-```
 
-#### These are the most common publication types in the diff: book chapters, journal articles and proceedings articles.
+These are the most common publication types in the diff: book chapters, journal articles and proceedings articles.
 
-```{r}
+{r}
 diff_oa_diva %>%
   filter(type == c("book-chapter", "journal-article", "proceedings-article")) %>%
   count(type) %>%
@@ -449,11 +452,10 @@ diff_oa_diva %>%
   theme_minimal() +
   scale_x_discrete(breaks = "", labels = "")
 
-```
 
-#### Let's try a diff on the title field for publications without a DOI
+Let's try a diff on the title field for publications without a DOI
 
-```{r}
+{r}
 kth_diva_titles <- kth_diva_works %>%
   filter(is.na(DOI))
   
@@ -482,11 +484,10 @@ title_diff_oa_diva %>%
   theme_minimal() +
   scale_x_discrete(breaks = "", labels = "")
 
-```
 
-#### Can we add any DOI:s to DiVA by matching titles between DiVA and OpenAlex?
+Can we add any DOI:s to DiVA by matching titles between DiVA and OpenAlex?
 
-```{r}
+{r}
 #| warning: false
 kth_diva_titles_without_doi <- kth_diva_works %>%
   filter(is.na(DOI))
@@ -521,13 +522,12 @@ title_diff_oa_diva %>%
 update_diva_title_doi <- title_diff_oa_diva[,c("display_name", "doi")] %>%
   filter(!is.na(doi))
 
-```
 
-#### Getting DOI prefixes in order to identify publishers
+Getting DOI prefixes in order to identify publishers
 
 Getting all DOI prefixes from Crossref: http://doi.crossref.org/getPrefixPublisher/?prefix=all
 
-```{r}
+{r}
 # 
 # html_unescape <- function(x) {
 #   html <- paste0("<x>", paste0(x, collapse = "#_|"), "</x>")
@@ -567,30 +567,22 @@ Getting all DOI prefixes from Crossref: http://doi.crossref.org/getPrefixPublish
 #   labs(x = "Publisher", y = "Frequency") +
 #   theme_minimal() +
 #   scale_x_discrete(breaks = "", labels = "")
-```
 
-#### Matching publisher name to known predatory publisher names
+Matching publisher name to known predatory publisher names
 
-\`\`\`{r} #\| warning: false
+```{r} #| warning: false
 
-## https://predatoryreports.org/the-predatory-publishers
+https://predatoryreports.org/the-predatory-publishers
 
-# predatory_publishers$predatory_publishers <- tolower(predatory_publishers$predatory_publishers)
+predatory_publishers$predatory_publishers <- tolower(predatory_publishers$predatory_publishers)
 
-# 
+doi_prefixes$name <- tolower(doi_prefixes$name)
 
-# doi_prefixes$name <- tolower(doi_prefixes$name)
+qq <- left_join(predatory_publishers, doi_prefixes, by = c("predatory_publishers" = "name"))
 
-# 
+pp <- qq %>%
 
-# qq \<- left_join(predatory_publishers, doi_prefixes, by = c("predatory_publishers" = "name"))
+filter(!is.na(prefixes))
 
-# 
+rr <- left_join(pp, kth_oa_works_pfx, by = c("prefixes" = "doi_prefix"))
 
-# pp \<- qq %\>%
-
-# filter(!is.na(prefixes))
-
-# 
-
-# rr \<- left_join(pp, kth_oa_works_pfx, by = c("prefixes" = "doi_prefix"))
