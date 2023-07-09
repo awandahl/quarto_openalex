@@ -1,0 +1,174 @@
+---
+title: "1. OpenAlex KTH: Getting the metadata"
+author: "Anders Wändahl"
+format:
+  html:
+    embed-resources: true
+#  pdf:
+#    prefer-html: true
+#    output:
+#    format: pdf  
+editor: visual
+---
+
+#### Getting the metadata from DiVA and OpenAlex 2020-2023
+
+We will look at the KTH publications that are unique in [OpenAlex](https://openalex.org/) as compared to what is registered in the [KTH repository DiVA](https://kth.diva-portal.org/smash/search.jsf?dswid=-7479). So we will download all relevant publications from DiVA and then search for all publications that are affiliated to KTH in OpenAlex by the ROR id ["026vcq606"](https://ror.org/026vcq606). Finally we will extract the "diff", i.e. the KTH publications in OpenAlex that we can't find in DiVA.
+
+Additionally we will use the DOI prefix to identify publishers. The DOI prefix serves as a unique identifier for each publisher or publishing organization. For example, the DOI prefix "10.30746" is registered to "KTH Royal Institute of Technology," while "10.1093" is assigned to "Oxford University Press (OUP)." Many prominent publishing houses possess multiple DOI prefixes, resulting from their acquisition of other publishers over time.
+
+#### Load the libraries
+
+```{r}
+#| warning: false
+suppressPackageStartupMessages({
+  library(openalex)
+  library(jsonlite)
+  library(tidyverse)
+  library(openalexR)
+  library(knitr)
+  library(httr)
+  library(rlist)
+  library(kableExtra)
+  library(tinytex)
+  library(webshot2)
+  library(magrittr)
+  library(gridExtra)
+})
+
+```
+
+#### Get and clean DOI prefixes from Crossref
+
+```{r}
+html_unescape <- function(x) {
+  html <- paste0("<x>", paste0(x, collapse = "#_|"), "</x>")
+  parsed <- xml2::xml_text(xml2::read_html(html))
+  strsplit(parsed, "#_|", fixed = TRUE)[[1]]
+}
+
+doi_prefixes <- GET("http://doi.crossref.org/getPrefixPublisher/?prefix=all") %>%
+  content(as="text") %>%
+  fromJSON()  %>%
+  unnest(col = "prefixes") %>%
+  arrange(name) %>%
+  rename(doi_publisher = name, cr_id = memberId, doi_prefix = prefixes) %>%
+  mutate(doi_publisher = html_unescape(doi_publisher))
+
+```
+
+#### Define the DiVA search
+
+This is where we specify which metadata we want to get from DiVA.
+
+```{r}
+diva_url <- 'https://kth.diva-portal.org/smash/export.jsf?format=csvall&addFilename=true&aq=[[]]&aqe=[]&aq2=[[{"dateIssued":{"from":"2020","to":"2023"}},{"publicationTypeCode":["bookReview","review","article","book","chapter","manuscript","collection","other","conferencePaper","patent","conferenceProceedings","report","dataset"]}]]&onlyFullText=false&noOfRows=99999&sortOrder=title_sort_asc&sortOrder2=title_sort_asc'
+
+```
+
+#### Getting the metadata from DiVA
+
+We change the DOI:s to lower case, trim white space, and translate the DOI prefixes to publishers into a new column, "doi_publisher".
+
+```{r}
+#| warning: false
+## Fetch the records from DiVA
+kth_diva_works <- read_csv(diva_url, show_col_types = FALSE)
+
+## Clean the DOI
+kth_diva_works$DOI <- str_to_lower(kth_diva_works$DOI)
+kth_diva_works$DOI <- str_trim(kth_diva_works$DOI)
+
+## Add a new column for doi_prefix
+kth_diva_works <- kth_diva_works %>%
+  mutate(doi_prefix = str_extract(DOI, "^([^/]+)"), .after = "DOI")
+
+kth_diva_works <- left_join(kth_diva_works, doi_prefixes, by = "doi_prefix")
+
+```
+
+#### Get the metadata from OpenAlex
+
+We change the DOI:s to lower case, trim whitespace, and translate the DOI prefixes to publishers into a new column, "doi_publisher".
+
+```{r}
+## Fetch the records from OpenAlex
+kth_oa_works <- oa_fetch(
+  entity = "works",
+  authorships.institutions.ror = "026vcq606",
+  from_publication_date = "2020-01-01",
+  to_publication_date = "2023-12-31",
+  verbose = TRUE
+  )
+
+## Clean the DOI
+kth_oa_works$doi <- str_remove(kth_oa_works$doi, "https://doi.org/")
+kth_oa_works$doi <- tolower(kth_oa_works$doi)
+kth_oa_works$doi <- str_trim(kth_oa_works$doi)
+
+## Add a new column for doi_prefix (e.g. 10.1016) for looking up publisher later
+kth_oa_works <- kth_oa_works %>%
+  mutate(doi_prefix = str_extract(doi, "^([^/]+)"), .after = "doi")
+
+kth_oa_works <- left_join(kth_oa_works, doi_prefixes, by = "doi_prefix")
+
+```
+
+## Let's compare the different publication types from DiVA and OpenAlex
+
+```{r}
+# Rename the column in DIVA dataset
+kth_diva_works_renamed <- kth_diva_works %>%
+  rename(type = PublicationType)
+
+# Merge the datasets and create a new column for source identification
+kth_diva_works_renamed$Source <- "DIVA"
+kth_oa_works$Source <- "OA"
+merged_data <- bind_rows(kth_diva_works_renamed, kth_oa_works)
+
+# Generate the table data
+table_data <- merged_data %>%
+  count(type, Source) %>%
+  arrange(desc(n))
+
+# Generate the bar graph
+graph_data <- table_data %>%
+  mutate(type = reorder(type, desc(n)))
+
+graph <- ggplot(graph_data, aes(x = type, y = n, fill = Source)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Publication Type", y = "Number of publications", fill = "Source") +
+  theme_minimal() +
+  scale_x_discrete(breaks = levels(graph_data$type), labels = levels(graph_data$type)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Print the graph
+print(graph)
+```
+
+#### Get the diff between DiVA and OpenAlex
+
+```{r}
+diff_oa_diva <- anti_join(kth_oa_works, kth_diva_works, by = c("doi" = "DOI"))
+```
+
+#### These are the publications found in OpenAlex that we can't find in DiVA. This diff is based on DOI:s only.
+
+```{r}
+diff_oa_diva %>%
+   count(type) %>%
+   arrange(desc(n)) %>%
+   kable("html") %>%
+   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+ 
+ diff_oa_diva %>%
+   count(type) %>%
+   arrange(desc(n)) %>%
+   mutate(type = reorder(type, desc(n))) %>%
+   ggplot(aes(x = type, y = n, fill = type)) +
+   geom_bar(stat = "identity") +
+   labs(x = "Publication Type", y = "Number of publications") +
+   theme_minimal() +
+   scale_x_discrete(breaks = "", labels = "")
+
+```
